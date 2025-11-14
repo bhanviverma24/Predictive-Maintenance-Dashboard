@@ -1,156 +1,166 @@
-import pandas as pd
+# train_models.py
+
+import os
 import numpy as np
+import pandas as pd
+import joblib
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import precision_score, recall_score, f1_score
+
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
-import joblib
-import os
 
-# -----------------------------
-#  Load and preprocess data
-# -----------------------------
-df = pd.read_csv("equipment_anomaly_data.csv")
-X = df[['temperature', 'vibration']].values
-y = df['faulty'].astype(int).values
+# -------------------------------------------------------
+# CONFIG
+# -------------------------------------------------------
+DATA_PATH = "equipment_anomaly_data.csv"
+MODEL_DIR = "models"
+EPOCHS = 20
+BATCH_SIZE = 32
+RANDOM_STATE = 42
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
+# -------------------------------------------------------
+# Load dataset
+# -------------------------------------------------------
+df = pd.read_csv(DATA_PATH)
+
+required_cols = [
+    'temperature', 'pressure', 'vibration', 'humidity',
+    'equipment', 'location', 'faulty'
+]
+
+missing = [c for c in required_cols if c not in df.columns]
+if missing:
+    raise ValueError(f"Missing columns: {missing}")
+
+df = df[required_cols].dropna().reset_index(drop=True)
+
+num_cols = ['temperature', 'pressure', 'vibration', 'humidity']
+cat_cols = ['equipment', 'location']
+target = "faulty"
+
+X = df[num_cols + cat_cols]
+y = df[target].astype(int).values
+
+# -------------------------------------------------------
+# Preprocessing
+# -------------------------------------------------------
+preprocessor = ColumnTransformer([
+    ("scale", StandardScaler(), num_cols),
+    ("ohe", OneHotEncoder(sparse_output=False, handle_unknown="ignore"), cat_cols)
+])
+
+X_trans = preprocessor.fit_transform(X)
+
+# Save preprocessor
+joblib.dump(preprocessor, os.path.join(MODEL_DIR, "preprocessor.pkl"))
+print("[OK] Saved preprocessor.pkl")
+
+# Train-test split
 X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y, test_size=0.2, random_state=42, stratify=y
+    X_trans, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
 )
 
-# Create folder for saving
-os.makedirs("models", exist_ok=True)
-joblib.dump(scaler, "models/scaler.pkl")
-
-# Results storage
-results = []
-
-# -----------------------------
-# Helper function to compute metrics
-# -----------------------------
-def compute_metrics(y_true, y_pred):
+# -------------------------------------------------------
+# Metric Calculation (ONLY 3 METRICS)
+# -------------------------------------------------------
+def compute_metrics(y_true, y_pred_prob):
+    y_pred = (np.array(y_pred_prob) > 0.5).astype(int)
     return {
-        "Accuracy": accuracy_score(y_true, y_pred),
-        "ROC-AUC": roc_auc_score(y_true, y_pred),
         "Precision": precision_score(y_true, y_pred, zero_division=0),
         "Recall": recall_score(y_true, y_pred, zero_division=0),
         "F1-score": f1_score(y_true, y_pred, zero_division=0)
     }
 
-# -----------------------------
-#  MLP Model
-# -----------------------------
+results = []
+
+# -------------------------------------------------------
+# 1) MLP (Recommended primary model)
+# -------------------------------------------------------
 mlp = models.Sequential([
-    layers.Input(shape=(2,)),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(32, activation='relu'),
-    layers.Dense(1, activation='sigmoid')
+    layers.Input(shape=(X_train.shape[1],)),
+    layers.Dense(128, activation="relu"),
+    layers.Dropout(0.3),
+    layers.Dense(64, activation="relu"),
+    layers.Dense(1, activation="sigmoid")
 ])
-mlp.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-mlp.fit(X_train, y_train, epochs=10, batch_size=32, verbose=0)
 
-y_pred = (mlp.predict(X_test) > 0.5).astype(int)
-metrics = compute_metrics(y_test, y_pred)
-results.append(["MLP", *metrics.values()])
+mlp.compile(optimizer="adam", loss="binary_crossentropy")
+mlp.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
-mlp.save("models/mlp_model.keras")
-mlp.save("models/mlp_model.h5")
-print("MLP trained and saved.")
+mlp_preds = mlp.predict(X_test).ravel()
+results.append(["MLP", *compute_metrics(y_test, mlp_preds).values()])
 
-# -----------------------------
-#  1D-CNN Model
-# -----------------------------
-X_train_cnn = X_train.reshape((X_train.shape[0], 1, 2))
-X_test_cnn = X_test.reshape((X_test.shape[0], 1, 2))
+mlp.save(os.path.join(MODEL_DIR, "mlp_model.keras"))
+print("[OK] Saved MLP model")
+
+# -------------------------------------------------------
+# 2) 1D-CNN (Tabular CNN)
+# -------------------------------------------------------
+X_train_cnn = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+X_test_cnn = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
 
 cnn = models.Sequential([
-    layers.Input(shape=(1, 2)),
-    layers.Conv1D(32, kernel_size=1, activation='relu'),
+    layers.Input(shape=(X_train.shape[1], 1)),
+    layers.Conv1D(64, kernel_size=3, activation="relu"),
+    layers.Conv1D(32, kernel_size=3, activation="relu"),
     layers.Flatten(),
-    layers.Dense(32, activation='relu'),
-    layers.Dense(1, activation='sigmoid')
+    layers.Dense(64, activation="relu"),
+    layers.Dense(1, activation="sigmoid")
 ])
-cnn.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-cnn.fit(X_train_cnn, y_train, epochs=10, batch_size=32, verbose=0)
 
-y_pred = (cnn.predict(X_test_cnn) > 0.5).astype(int)
-metrics = compute_metrics(y_test, y_pred)
-results.append(["1D-CNN", *metrics.values()])
+cnn.compile(optimizer="adam", loss="binary_crossentropy")
+cnn.fit(X_train_cnn, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
-cnn.save("models/cnn_model.keras")
-cnn.save("models/cnn_model.h5")
-print("1D-CNN trained and saved.")
+cnn_preds = cnn.predict(X_test_cnn).ravel()
+results.append(["1D-CNN", *compute_metrics(y_test, cnn_preds).values()])
 
-# -----------------------------
-#  LSTM Model
-# -----------------------------
-seq_len = 5
-X_seq, y_seq = [], []
-for i in range(len(X_scaled) - seq_len):
-    X_seq.append(X_scaled[i:i + seq_len])
-    y_seq.append(y[i + seq_len])
-X_seq, y_seq = np.array(X_seq), np.array(y_seq)
+cnn.save(os.path.join(MODEL_DIR, "cnn_model.keras"))
+print("[OK] Saved CNN model")
 
-X_train_seq, X_test_seq, y_train_seq, y_test_seq = train_test_split(
-    X_seq, y_seq, test_size=0.2, random_state=42, stratify=y_seq
-)
+# -------------------------------------------------------
+# 3) Autoencoder (Unsupervised anomaly detection)
+# -------------------------------------------------------
+X_train_norm = X_train[y_train == 0]  # only normal samples
+if len(X_train_norm) < 20:
+    X_train_norm = X_train  # fallback
 
-lstm = models.Sequential([
-    layers.Input(shape=(seq_len, 2)),
-    layers.LSTM(64),
-    layers.Dense(32, activation='relu'),
-    layers.Dense(1, activation='sigmoid')
+auto = models.Sequential([
+    layers.Input(shape=(X_train.shape[1],)),
+    layers.Dense(64, activation="relu"),
+    layers.Dense(32, activation="relu"),
+    layers.Dense(64, activation="relu"),
+    layers.Dense(X_train.shape[1], activation="linear")
 ])
-lstm.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-lstm.fit(X_train_seq, y_train_seq, epochs=10, batch_size=32, verbose=0)
 
-y_pred = (lstm.predict(X_test_seq) > 0.5).astype(int)
-metrics = compute_metrics(y_test_seq, y_pred)
-results.append(["LSTM", *metrics.values()])
+auto.compile(optimizer="adam", loss="mse")
+auto.fit(X_train_norm, X_train_norm, epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 
-lstm.save("models/lstm_model.keras")
-lstm.save("models/lstm_model.h5")
-print("LSTM trained and saved.")
+recon = auto.predict(X_test)
+mse = np.mean((X_test - recon) ** 2, axis=1)
 
-# -----------------------------
-#  Autoencoder Model
-# -----------------------------
-X_normal = X_train[y_train == 0]
-autoencoder = models.Sequential([
-    layers.Input(shape=(2,)),
-    layers.Dense(16, activation='relu'),
-    layers.Dense(8, activation='relu'),
-    layers.Dense(16, activation='relu'),
-    layers.Dense(2, activation='linear')
+recon_norm = auto.predict(X_train_norm)
+mse_norm = np.mean((X_train_norm - recon_norm) ** 2, axis=1)
+threshold = np.percentile(mse_norm, 95)
+
+np.save(os.path.join(MODEL_DIR, "autoencoder_threshold.npy"), threshold)
+auto.save(os.path.join(MODEL_DIR, "autoencoder_model.keras"))
+
+y_pred_auto = (mse > threshold).astype(int)
+results.append(["Autoencoder", *compute_metrics(y_test, y_pred_auto).values()])
+
+# -------------------------------------------------------
+# Save all metrics (ONLY 3 METRICS)
+# -------------------------------------------------------
+results_df = pd.DataFrame(results, columns=[
+    "Model", "Precision", "Recall", "F1-score"
 ])
-autoencoder.compile(optimizer='adam', loss='mse')
-autoencoder.fit(X_normal, X_normal, epochs=10, batch_size=32, verbose=0)
+results_df.to_csv(os.path.join(MODEL_DIR, "model_metrics.csv"), index=False)
 
-autoencoder.save("models/autoencoder_model.keras")
-autoencoder.save("models/autoencoder_model.h5")
-
-recon = autoencoder.predict(X_test)
-mse = np.mean(np.square(X_test - recon), axis=1)
-threshold = np.percentile(mse, 95)
-np.save("models/autoencoder_threshold.npy", threshold)
-
-auto_pred = (mse > threshold).astype(int)
-metrics = compute_metrics(y_test, auto_pred)
-results.append(["Autoencoder", *metrics.values()])
-
-print(f"Autoencoder trained and saved. Threshold: {threshold:.6f}")
-
-# -----------------------------
-#  Save Metrics
-# -----------------------------
-results_df = pd.DataFrame(results, columns=["Model", "Accuracy", "ROC-AUC", "Precision", "Recall", "F1-score"])
-results_df.to_csv("models/model_metrics.csv", index=False)
-
-print("\n================= MODEL PERFORMANCE SUMMARY =================")
-print(results_df.to_string(index=False))
-print("==============================================================")
-print("All models trained and saved successfully in 'models/' directory.")
+print("\nTraining Completed Successfully.")
+print(results_df)

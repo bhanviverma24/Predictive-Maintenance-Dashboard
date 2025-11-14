@@ -1,7 +1,9 @@
 streamlit
-tensorflow==2.17
-numpy
 pandas
+numpy
+scikit-learn
+joblib
 matplotlib
 seaborn
-scikit-learn
+shap
+tensorflow>=2.11
