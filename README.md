@@ -32,7 +32,7 @@ Each model outputs:
 * Severity level
 * Suggested maintenance action
 
-### **Sensors & Input Data**
+### Sensors & Input Data
 
 Supports multiple real-time inputs:
 
@@ -45,7 +45,7 @@ Supports multiple real-time inputs:
 
 ---
 
-## ** Dashboard Features**
+## Dashboard Features
 
 The Streamlit dashboard provides:
 
@@ -58,7 +58,7 @@ The Streamlit dashboard provides:
 
 ---
 
-## ** Tech Stack**
+##  Tech Stack
 
 | Component       | Technology          |
 | --------------- | ------------------- |
@@ -71,7 +71,7 @@ The Streamlit dashboard provides:
 
 ---
 
-## ** Dataset**
+##  Dataset
 
 This project uses an industrial equipment dataset containing:
 
@@ -86,22 +86,22 @@ Dataset Source: Kaggle — *Industrial Equipment Monitoring Dataset (DNKumars)*
 
 ---
 
-## ** How to Run**
+## How to Run
 
-### **1. Clone the repository**
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/bhanviverma24/Predictive-Maintenance-Dashboard.git
 cd Predictive-Maintenance-Dashboard
 ```
 
-### **2. Install dependencies**
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### **3. Run the dashboard**
+### 3. Run the dashboard
 
 ```bash
 streamlit run dashboard.py
@@ -109,7 +109,7 @@ streamlit run dashboard.py
 
 ---
 
-## ** Folder Structure**
+## Folder Structure
 
 ```
 Predictive-Maintenance-Dashboard/
@@ -126,7 +126,7 @@ Predictive-Maintenance-Dashboard/
 
 ---
 
-## ** Future Improvements**
+##  Future Improvements
 
 * Integration with IoT hardware for live sensor streaming
 * Mobile dashboard view
