@@ -1,10 +1,10 @@
-# **Predictive Maintenance Dashboard**
+# Predictive Maintenance Dashboard
 
 This project is an AI-powered **Predictive Maintenance Dashboard** that monitors industrial machines in real time and predicts potential faults before they occur. It uses deep learning models and an interactive dashboard to help industries reduce downtime, lower maintenance costs, and optimize machine performance.
 
 ---
 
-## **Features**
+## Features
 
 * **Real-time machine fault prediction** using MLP and 1D-CNN models
 * **Unsupervised anomaly detection** using Autoencoders
@@ -16,9 +16,9 @@ This project is an AI-powered **Predictive Maintenance Dashboard** that monitors
 
 ---
 
-## **System Overview**
+## System Overview
 
-### **Machine Learning Models**
+### Machine Learning Models
 
 The system uses three deep learning models:
 
